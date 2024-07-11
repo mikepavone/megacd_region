@@ -174,6 +174,10 @@ fn main() -> Result<()> {
 	for sector in ip_start_sector..ip_end_sector {
 		ip.extend_from_slice(&extra[(sector - extra_sector_start) as usize].data);
 	}
+	//attempt to remove padding from IP program
+	while  ip[ip.len() - 1] == 0 && ip[ip.len() - 2] == 0{
+		ip.truncate(ip.len() - 2);
+	}
 	let mut sp = Vec::with_capacity(((sp_sector_end - sp_sector_start) as usize) * 0x800);
 	for sector in sp_sector_start..sp_sector_end {
 		sp.extend_from_slice(&extra[(sector - extra_sector_start) as usize].data);
