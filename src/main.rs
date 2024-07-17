@@ -27,6 +27,7 @@ fn write_be16(bytes: &mut [u8], value: u16) {
 #[derive(Debug)]
 #[derive(Clone)]
 #[derive(Copy)]
+#[derive(PartialEq)]
 enum Region {
 	Japan,
 	Usa,
@@ -34,17 +35,17 @@ enum Region {
 }
 
 impl Region {
-	fn security_size(&self) -> usize {
+	fn security_size(self) -> usize {
 		self.security_code().len()
 	}
-	fn security_code(&self) -> &[u8] {
+	fn security_code(&self) -> &'static [u8] {
 		match self {
 			Region::Japan => include_bytes!("../security_bins/japan_security.bin"),
 			Region::Usa => include_bytes!("../security_bins/usa_security.bin"),
 			Region::Europe => include_bytes!("../security_bins/europe_security.bin"),
 		}
 	}
-	fn adapter_code(&self, dest_region: Region) -> &[u8] {
+	fn adapter_code(self, dest_region: Region) -> &'static [u8] {
 		match self {
 			Region::Japan => match dest_region {
 				Region::Japan => &[],
@@ -63,33 +64,24 @@ impl Region {
 			},
 		}
 	}
-	fn region_char(&self) -> u8 {
+	fn region_char(self) -> u8 {
 		match self {
 			Region::Japan => b'J',
 			Region::Usa => b'U',
 			Region::Europe => b'E',
 		}
 	}
-	fn inject_size(&self, dest_region: Region, ip: &mut Vec<u8>) {
-		match self {
-			Region::Japan => match dest_region {
-				Region::Japan => {},
-				Region::Usa => {
-					let delta = ((ip.len() - 0x7B6) >> 1) as u16;
-					write_be16(&mut ip[0x7A8..0x7AA], delta);
-				},
-				Region::Europe => {},
+	fn inject_size(self, dest_region: Region, ip: &mut Vec<u8>) {
+		match (self, dest_region) {
+			(_, Region::Usa) if self != Region::Usa => {
+				let delta = ((ip.len() - 0x7AC + 3) >> 2) as u16;
+				write_be16(&mut ip[0x786..0x788], delta);
 			},
-			Region::Usa => match dest_region {
-				Region::Japan => {},
-				Region::Usa => {},
-				Region::Europe => {},
+			(Region::Japan, Region::Europe) => {
+				let delta = ((ip.len() - 0x796 + 3) >> 2) as u16;
+				write_be16(&mut ip[0x770..0x772], delta);
 			},
-			Region::Europe => match dest_region {
-				Region::Japan => {},
-				Region::Usa => {},
-				Region::Europe => {},
-			},
+			_ => {}
 		};
 	}
 }
@@ -98,9 +90,8 @@ fn round_sector(num: u32) -> u32 {
 }
 
 fn main() -> Result<()> {
-    println!("Hello, world!");
 	let fname = match args_os().nth(1) {
-		None => panic!("Usage: megacd_region FILE"),
+		None => panic!("Usage: megacd_region FILE [DEST_REGION OUTFILE]"),
 		Some(p) => p,
 	};
 	
@@ -129,8 +120,19 @@ fn main() -> Result<()> {
 	};
 	println!("Region: {region:?}, Security Size: {:X}", region.security_size());
 	
-	let outname = match args_os().nth(2) {
+	let mut region_arg = match args_os().nth(2) {
 		None => { return Ok(()); },
+		Some(n) => n,
+	};
+	region_arg.make_ascii_uppercase();
+	let region_char = region_arg.as_encoded_bytes()[0];
+	let dest_region = *match [Region::Japan, Region::Usa, Region::Europe].iter().find(|r| r.region_char() == region_char) {
+		Some(r) => r,
+		None => panic!("Invalid destination region {}", region_arg.to_string_lossy()),
+	};
+	
+	let outname = match args_os().nth(3) {
+		None => { panic!("Usage: megacd_region FILE [DEST_REGION OUTFILE]") },
 		Some(n) => n,
 	};
 	let mut out = match File::create(outname.clone()) {
@@ -138,8 +140,6 @@ fn main() -> Result<()> {
 		Ok(f) => f,
 	};
 	
-	//TODO: make this configurable
-	let dest_region = Region::Usa;
 	let security_code = dest_region.security_code();
 	let adapter = region.adapter_code(dest_region);
 	

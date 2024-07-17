@@ -1,0 +1,18 @@
+	include "defs.inc"
+	section "code",CODE[usa_start]
+
+	move.w #$DEAD, d0
+	lea japan_start(pc), a1
+	lea copy_back(pc), a0
+	lea tmp_buf.w, a2
+	move.w #((copy_end-copy_back+3) >> 2), d1
+loop:
+	move.l (a0)+, (a2)+
+	dbra d1, loop
+	move.l a1, a2
+	jmp tmp_buf.w
+copy_back:
+	move.l (a0)+, (a2)+
+	dbra d0, copy_back
+	jmp (a1)
+copy_end:

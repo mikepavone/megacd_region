@@ -1,0 +1,11 @@
+	include "defs.inc"
+	section "adapter",CODE[europe_start]
+
+	bra.b orig_start
+pad:
+	rept (usa_start-pad)>>1
+	nop
+	endr
+	
+	section "main",CODE[usa_start]
+orig_start:
